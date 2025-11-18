@@ -2098,61 +2098,67 @@
     }
 
     function renderReportTable(data) {
-      const rows = data.map(r => {
-        let gioRaw = r["Giờ"] || r.gio || "";
-        let ngayRaw = r["Ngày"] || r.ngay || "";
+  const rows = data.map(r => {
+    let gioRaw = r["Giờ"] || r.gio || "";
+    let ngayRaw = r["Ngày"] || r.ngay || "";
 
-        function formatDateTime(value, type="date") {
-          if (!value) return "";
-          try {
-            const d = new Date(value);
-            if (isNaN(d)) return value;
-            if (type === "time") return d.toLocaleTimeString("vi-VN", { hour12: false });
-            return d.toLocaleDateString("vi-VN");
-          } catch {
-            return value;
-          }
-        }
-
-        const gio = formatDateTime(gioRaw, "time");
-        const ngay = formatDateTime(ngayRaw, "date");
-        
-        const status = r["Trạng thái"] || r.trangThai || r.status || "";
-        const statusBadge = status === "COMPLETED" ? 
-          '<span class="status-badge status-completed">✅ Hoàn thành</span>' : 
-          '<span class="status-badge status-pending">⏳ Đang xử lý</span>';
-
-        return `
-          <tr>
-            <td>${r["Mã hàng"] || r.maHang || ""}</td>
-            <td>${r["QR Code"] || r.qrCode || ""}</td>
-            <td>${statusBadge}</td>
-            <td>${r["Lỗi cần sửa"] || r.loiCanSua || r.moTaLoi || ""}</td>
-            <td>${r["Hành động sửa chữa"] || r.hanhDongSuaChua || ""}</td>
-            <td>${gio}</td>
-            <td>${ngay}</td>
-            <td>${r["Người thực hiện"] || r.maNV || r.User || ""}</td>
-            <td>${r["Ca làm việc"] || r.caLam || r.Shift || ""}</td>
-            <td>${r["PO"] || r.po || ""}</td>
-            <td>${r["Ghi chú"] || r.ghichu || ""}</td>
-          </tr>
-        `;
-      });
-
-      if (!clusterize) {
-        clusterize = new Clusterize({
-          rows: rows,
-          scrollId: 'scrollArea',
-          contentId: 'clusterize-content'
-        });
-      } else {
-        clusterize.update(rows);
+    function formatDateTime(value, type="date") {
+      if (!value) return "";
+      try {
+        const d = new Date(value);
+        if (isNaN(d)) return value;
+        if (type === "time") return d.toLocaleTimeString("vi-VN", { hour12: false });
+        return d.toLocaleDateString("vi-VN");
+      } catch {
+        return value;
       }
-
-      const info = document.getElementById("recordCount");
-      if (info) info.textContent = `Tổng: ${data.length} dòng rework`;
     }
 
+    const gio = formatDateTime(gioRaw, "time");
+    const ngay = formatDateTime(ngayRaw, "date");
+    
+    // FIX: Kiểm tra kỹ hơn các trường có thể có của status
+    const status = r["Kết quả"] || r["Trạng thái"] || r.trangThai || r.status || r["Status"] || "";
+ 
+    console.log("🔍 Debug status for QR:", r["QR Code"] || r.qrCode, "Status:", status); // Debug line
+    
+    // FIX: Xử lý cả chữ hoa và chữ thường
+    const statusNormalized = status.toString().toUpperCase().trim();
+    
+    const statusBadge = statusNormalized === "COMPLETED" ? 
+      '<span class="status-badge status-completed">✅ Hoàn thành</span>' : 
+      '<span class="status-badge status-pending">⏳ Đang xử lý</span>';
+
+    return `
+      <tr>
+        <td>${r["Mã hàng"] || r.maHang || ""}</td>
+        <td>${r["QR Code"] || r.qrCode || r["QR code"] || ""}</td>
+        <td>${statusBadge}</td>
+        <td>${r["Lỗi cần sửa"] || r.loiCanSua || r.moTaLoi || ""}</td>
+        <td>${r["Hành động sửa chữa"] || r.hanhDongSuaChua || ""}</td>
+        <td>${gio}</td>
+        <td>${ngay}</td>
+        <td>${r["Người thực hiện"] || r.maNV || r.User || r["Nhân viên"] || ""}</td>
+        <td>${r["Ca làm việc"] || r.caLam || r.Shift || r["Ca"] || ""}</td>
+        <td>${r["PO"] || r.po || r["WO"] || ""}</td>
+        <td>${r["Ghi chú"] || r.ghichu || ""}</td>
+      </tr>
+    `;
+  });
+
+  if (!clusterize) {
+    clusterize = new Clusterize({
+      rows: rows,
+      scrollId: 'scrollArea',
+      contentId: 'clusterize-content'
+    });
+  } else {
+    clusterize.update(rows);
+  }
+
+  const info = document.getElementById("recordCount");
+  if (info) info.textContent = `Tổng: ${data.length} dòng rework`;
+}
     // Khởi tạo khi trang được tải
     window.onload = function() {
       recomputeCountsForShift(currentShift || "");
