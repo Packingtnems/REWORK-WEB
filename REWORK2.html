@@ -580,523 +580,407 @@
       }
     }
 
-    function showQRHistory(qrCode) {
-      const historyContainer = document.getElementById('qrHistory');
-      const currentQRCodeSpan = document.getElementById('currentQRCode');
-      const historyContent = document.getElementById('historyContent');
+    /* ===== HIỂN THỊ LỊCH SỬ QR CODE ===== */
+/* ===== HIỂN THỊ LỊCH SỬ QR CODE - CHỈ LẤY TRẠNG THÁI CUỐI CÙNG (KHÔNG BAO GỒM LOCAL) ===== */
+function showQRHistory(qrCode) {
+  const historyContainer = document.getElementById('qrHistory');
+  const currentQRCodeSpan = document.getElementById('currentQRCode');
+  const historyContent = document.getElementById('historyContent');
+  
+  console.log("🔍 Tìm kiếm lịch sử cho QR:", qrCode);
+  
+  // Đối tượng lưu trạng thái cuối cùng của từng nguồn (KHÔNG BAO GỒM LOCAL)
+  const latestStatusBySource = {};
+  
+  // Hàm convert timestamp
+  function convertTimestamp(timestamp) {
+    if (!timestamp) return null;
+    
+    if (typeof timestamp === "number") {
+      try {
+        const excelBaseDate = new Date(1899, 11, 30).getTime();
+        const excelTimestamp = excelBaseDate + (timestamp - 1) * 24 * 60 * 60 * 1000;
+        const date = new Date(excelTimestamp);
+        const vietnamDate = new Date(date.getTime() + 7 * 60 * 60 * 1000);
+        return vietnamDate;
+      } catch (e) {
+        console.error("Lỗi convert timestamp:", e);
+        return null;
+      }
+    }
+    
+    if (typeof timestamp === "string") {
+      try {
+        return new Date(timestamp);
+      } catch (e) {
+        return null;
+      }
+    }
+    
+    return null;
+  }
+
+  // Hàm phụ trợ để lấy timestamp từ record
+  function getTimestampFromRecord(record) {
+    const dateObj = convertTimestamp(record["Ngày"] || record.ngay || record["Date"]);
+    const timeObj = convertTimestamp(record["Giờ"] || record.gio || record["Time"]);
+    
+    if (dateObj && timeObj) {
+      return new Date(
+        dateObj.getFullYear(),
+        dateObj.getMonth(),
+        dateObj.getDate(),
+        timeObj.getHours(),
+        timeObj.getMinutes(),
+        timeObj.getSeconds()
+      ).getTime();
+    } else if (dateObj) {
+      return dateObj.getTime();
+    }
+    
+    return 0;
+  }
+
+  // Hàm phụ trợ để tạo Date object từ record
+  function createDateFromRecord(record) {
+    if (record.ngay && record.gio) {
+      try {
+        const [day, month, year] = record.ngay.split('/');
+        const [hour, minute, second] = record.gio.split(':');
+        return new Date(year, month - 1, day, hour, minute, second || 0);
+      } catch (e) {
+        return new Date(0);
+      }
+    } else if (record.ngay) {
+      try {
+        const [day, month, year] = record.ngay.split('/');
+        return new Date(year, month - 1, day);
+      } catch (e) {
+        return new Date(0);
+      }
+    } else {
+      return new Date(0);
+    }
+  }
+
+  // ❌ ĐÃ XÓA PHẦN TÌM KIẾM TRONG RECORDS LOCAL
+
+  // 1. Tìm trong proData (dữ liệu PRO từ Tab 2) - lấy bản ghi mới nhất
+  let latestPro = null;
+  let latestProTimestamp = 0;
+  
+  if (proData && proData.length > 0) {
+    console.log("🔍 Đang tìm trong proData:", proData.length, "bản ghi");
+    proData.forEach((r) => {
+      const qrValue = (
+        r["QR Code"] || 
+        r["QR code"] || 
+        r["Qr code"] ||
+        r.qrCode || 
+        r.qr || 
+        r["QRCode"] || 
+        ""
+      ).toString().trim().toUpperCase();
       
-      console.log("🔍 Tìm kiếm lịch sử cho QR:", qrCode);
+      if (qrValue === qrCode.toUpperCase()) {
+        const timestamp = getTimestampFromRecord(r);
+        if (timestamp > latestProTimestamp) {
+          latestProTimestamp = timestamp;
+          latestPro = r;
+        }
+      }
+    });
+    
+    if (latestPro) {
+      const timeObj = convertTimestamp(latestPro["Giờ"] || latestPro.gio || latestPro["Time"]);
+      const dateObj = convertTimestamp(latestPro["Ngày"] || latestPro.ngay || latestPro["Date"]);
       
-      // Tìm tất cả bản ghi cho QR code này từ 4 nguồn
-      const qrHistory = [];
+      const gio = timeObj ? 
+        `${String(timeObj.getHours()).padStart(2, '0')}:${String(timeObj.getMinutes()).padStart(2, '0')}:${String(timeObj.getSeconds()).padStart(2, '0')}` : 
+        "";
       
-      // 1. Tìm trong records (dữ liệu rework local)
-      for (let i = 1; i < records.length; i++) {
-        if (records[i][1] === qrCode) {
-          qrHistory.push({
-            source: 'rework_local',
-            data: records[i],
-            maHang: records[i][0],
-            qrCode: records[i][1],
-            status: records[i][2],
-            loi: records[i][3],
-            action: records[i][4],
-            gio: records[i][5],
-            ngay: records[i][6],
-            nguoiThucHien: records[i][7],
-            ca: records[i][8],
-            wo: records[i][9],
-            ghichu: records[i][10]
-          });
+      const ngay = dateObj ? 
+        `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()}` : 
+        "";
+
+      latestStatusBySource['pro'] = {
+        source: 'pro',
+        data: latestPro,
+        maHang: latestPro["Mã hàng"] || latestPro.maHang || latestPro["Mã Hàng"] || "",
+        qrCode: qrCode.toUpperCase(),
+        status: latestPro["Phán định"] || latestPro["Kết quả"] || latestPro.phanDinh || "",
+        loi: latestPro["Mô tả lỗi"] || latestPro.moTaLoi || latestPro["Lỗi"] || "",
+        action: "",
+        gio: gio,
+        ngay: ngay,
+        nguoiThucHien: latestPro["Mã Nhân Viên"] || latestPro.maNV || latestPro.User || latestPro["Nhân viên"] || "",
+        ca: latestPro["Ca làm việc"] || latestPro.caLam || latestPro.Shift || latestPro["Ca"] || "",
+        wo: latestPro["PO"] || latestPro.po || latestPro["WO"] || latestPro["Số WO"] || "",
+        ghichu: latestPro["Ghi chú"] || latestPro.ghichu || latestPro["Note"] || ""
+      };
+      console.log("✅ Tìm thấy PRO data:", latestPro);
+    }
+  }
+
+  // 2. Tìm trong allData (dữ liệu rework từ Tab 3 - Google Sheets) - lấy bản ghi mới nhất
+  let latestReworkGoogle = null;
+  let latestReworkGoogleTimestamp = 0;
+  
+  if (allData && allData.length > 0) {
+    console.log("🔍 Đang tìm trong allData:", allData.length, "bản ghi");
+    allData.forEach((r) => {
+      const qrValue = (
+        r["QR Code"] || 
+        r["Qr code"] || 
+        r["QR code"] || 
+        r.qrCode || 
+        r.qr || 
+        r["QRCode"] || 
+        ""
+      ).toString().trim().toUpperCase();
+      
+      if (qrValue === qrCode.toUpperCase()) {
+        const timestamp = getTimestampFromRecord(r);
+        if (timestamp > latestReworkGoogleTimestamp) {
+          latestReworkGoogleTimestamp = timestamp;
+          latestReworkGoogle = r;
+        }
+      }
+    });
+    
+    if (latestReworkGoogle) {
+      const timeObj = convertTimestamp(latestReworkGoogle["Giờ"] || latestReworkGoogle.gio || latestReworkGoogle["Time"]);
+      const dateObj = convertTimestamp(latestReworkGoogle["Ngày"] || latestReworkGoogle.ngay || latestReworkGoogle["Date"]);
+      
+      const gio = timeObj ? 
+        `${String(timeObj.getHours()).padStart(2, '0')}:${String(timeObj.getMinutes()).padStart(2, '0')}:${String(timeObj.getSeconds()).padStart(2, '0')}` : 
+        (latestReworkGoogle["Giờ"] || latestReworkGoogle.gio || latestReworkGoogle["Time"] || "");
+      
+      const ngay = dateObj ? 
+        `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()}` : 
+        (latestReworkGoogle["Ngày"] || latestReworkGoogle.ngay || latestReworkGoogle["Date"] || "");
+
+      latestStatusBySource['rework_google'] = {
+        source: 'rework_google',
+        data: latestReworkGoogle,
+        maHang: latestReworkGoogle["Mã hàng"] || latestReworkGoogle.maHang || latestReworkGoogle["Mã Hàng"] || "",
+        qrCode: qrCode.toUpperCase(),
+        status: latestReworkGoogle["Trạng thái"] || latestReworkGoogle.trangThai || latestReworkGoogle.status || latestReworkGoogle["Status"] || latestReworkGoogle["Kết quả"] || "",
+        loi: latestReworkGoogle["Lỗi cần sửa"] || latestReworkGoogle.loiCanSua || latestReworkGoogle.moTaLoi || latestReworkGoogle["Lỗi"] || "",
+        action: latestReworkGoogle["Hành động sửa chữa"] || latestReworkGoogle.hanhDongSuaChua || latestReworkGoogle["Hành động"] || "",
+        gio: gio,
+        ngay: ngay,
+        nguoiThucHien: latestReworkGoogle["Người thực hiện"] || latestReworkGoogle.maNV || latestReworkGoogle.User || latestReworkGoogle["Nhân viên"] || "",
+        ca: latestReworkGoogle["Ca làm việc"] || latestReworkGoogle.caLam || latestReworkGoogle.Shift || latestReworkGoogle["Ca"] || "",
+        wo: latestReworkGoogle["PO"] || latestReworkGoogle.po || latestReworkGoogle["WO"] || latestReworkGoogle["Số WO"] || "",
+        ghichu: latestReworkGoogle["Ghi chú"] || latestReworkGoogle.ghichu || latestReworkGoogle["Note"] || ""
+      };
+      console.log("✅ Tìm thấy rework google:", latestReworkGoogle);
+    }
+  }
+
+  // 3. Tìm trong sauTestData (dữ liệu PQC từ Tab 4) - lấy bản ghi mới nhất
+  let latestPQC = null;
+  let latestPQCTimestamp = 0;
+  
+  if (sauTestData && sauTestData.length > 0) {
+    console.log("🔍 Đang tìm trong sauTestData:", sauTestData.length, "bản ghi");
+    sauTestData.forEach((r) => {
+      const qrValue = (
+        r["QR Code"] || 
+        r["QR code"] || 
+        r.qrCode || 
+        r.qr || 
+        ""
+      ).toString().trim().toUpperCase();
+      
+      if (qrValue === qrCode.toUpperCase()) {
+        const timestamp = getTimestampFromRecord(r);
+        if (timestamp > latestPQCTimestamp) {
+          latestPQCTimestamp = timestamp;
+          latestPQC = r;
+        }
+      }
+    });
+    
+    if (latestPQC) {
+      const timeObj = convertTimestamp(latestPQC["Giờ"] || latestPQC.gio || latestPQC["Time"]);
+      const dateObj = convertTimestamp(latestPQC["Ngày"] || latestPQC.ngay || latestPQC["Date"]);
+      
+      const gio = timeObj ? 
+        `${String(timeObj.getHours()).padStart(2, '0')}:${String(timeObj.getMinutes()).padStart(2, '0')}:${String(timeObj.getSeconds()).padStart(2, '0')}` : 
+        "";
+      
+      const ngay = dateObj ? 
+        `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()}` : 
+        "";
+
+      latestStatusBySource['pqc'] = {
+        source: 'pqc',
+        data: latestPQC,
+        maHang: latestPQC["Mã hàng"] || latestPQC.maHang || "",
+        qrCode: qrCode.toUpperCase(),
+        status: latestPQC["Phán định"] || latestPQC.phanDinh || "",
+        loi: latestPQC["Mô tả lỗi"] || latestPQC.moTaLoi || "",
+        action: "",
+        gio: gio,
+        ngay: ngay,
+        nguoiThucHien: latestPQC["Mã Nhân Viên"] || latestPQC.maNV || "",
+        ca: latestPQC["Ca làm việc"] || latestPQC.caLam || "",
+        wo: latestPQC["PO"] || latestPQC.po || "",
+        ghichu: latestPQC["Ghi chú"] || latestPQC.ghichu || ""
+      };
+      console.log("✅ Tìm thấy PQC data:", latestPQC);
+    }
+  }
+
+  // 4. Tìm trong oqcData (dữ liệu OQC từ Tab 5) - lấy bản ghi mới nhất
+  let latestOQC = null;
+  let latestOQCTimestamp = 0;
+  
+  if (oqcData && oqcData.length > 0) {
+    console.log("🔍 Đang tìm trong oqcData:", oqcData.length, "bản ghi");
+    oqcData.forEach((r) => {
+      const qrValue = (
+        r["QR Code"] || 
+        r["QR code"] || 
+        r.qrCode || 
+        r.qr || 
+        ""
+      ).toString().trim().toUpperCase();
+      
+      if (qrValue === qrCode.toUpperCase()) {
+        const timestamp = getTimestampFromRecord(r);
+        if (timestamp > latestOQCTimestamp) {
+          latestOQCTimestamp = timestamp;
+          latestOQC = r;
+        }
+      }
+    });
+    
+    if (latestOQC) {
+      const timeObj = convertTimestamp(latestOQC["Giờ"] || latestOQC.gio || latestOQC["Time"]);
+      const dateObj = convertTimestamp(latestOQC["Ngày"] || latestOQC.ngay || latestOQC["Date"]);
+      
+      const gio = timeObj ? 
+        `${String(timeObj.getHours()).padStart(2, '0')}:${String(timeObj.getMinutes()).padStart(2, '0')}:${String(timeObj.getSeconds()).padStart(2, '0')}` : 
+        "";
+      
+      const ngay = dateObj ? 
+        `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()}` : 
+        "";
+
+      latestStatusBySource['oqc'] = {
+        source: 'oqc',
+        data: latestOQC,
+        maHang: latestOQC["Mã hàng"] || latestOQC.maHang || "",
+        qrCode: qrCode.toUpperCase(),
+        status: latestOQC["Phán định"] || latestOQC.phanDinh || "",
+        loi: latestOQC["Mô tả lỗi"] || latestOQC.moTaLoi || "",
+        action: "",
+        gio: gio,
+        ngay: ngay,
+        nguoiThucHien: latestOQC["Mã Nhân Viên"] || latestOQC.maNV || "",
+        ca: latestOQC["Ca làm việc"] || latestOQC.caLam || "",
+        wo: latestOQC["PO"] || latestOQC.po || "",
+        ghichu: latestOQC["Ghi chú"] || latestOQC.ghichu || ""
+      };
+      console.log("✅ Tìm thấy OQC data:", latestOQC);
+    }
+  }
+  
+  console.log("📋 Trạng thái cuối cùng từ 4 nguồn (không bao gồm local):", Object.keys(latestStatusBySource));
+  
+  if (Object.keys(latestStatusBySource).length > 0) {
+    currentQRCodeSpan.textContent = qrCode;
+    
+    // Sắp xếp theo thời gian mới nhất trước
+    const sortedStatuses = Object.values(latestStatusBySource).sort((a, b) => {
+      const dateA = createDateFromRecord(a);
+      const dateB = createDateFromRecord(b);
+      return dateB - dateA;
+    });
+    
+    let historyHTML = '';
+    sortedStatuses.forEach((record, index) => {
+      // Xác định badge cho nguồn dữ liệu
+      let sourceBadge = '';
+      let statusBadge = '';
+      
+      if (record.source === 'pro') {
+        sourceBadge = '<span style="background:#3498db; color:white; padding:2px 6px; border-radius:3px; font-size:10px; margin-left:5px;">PRO TEST</span>';
+        
+        if (record.status === 'OK') {
+          statusBadge = '<span class="status-badge status-completed">✅ PASS TEST</span>';
+        } else if (record.status === 'NG') {
+          statusBadge = '<span class="status-badge status-pending">❌ FAIL TEST</span>';
+        } else {
+          statusBadge = `<span class="status-badge status-pending">${record.status || 'Chưa xác định'}</span>`;
+        }
+      } else if (record.source === 'rework_google') {
+        sourceBadge = '<span style="background:#e67e22; color:white; padding:2px 6px; border-radius:3px; font-size:10px; margin-left:5px;">REWORK</span>';
+        
+        const status = String(record.status || "").trim();
+        if (status === 'Hoàn thành' || status === 'COMPLETED') {
+          statusBadge = '<span class="status-badge status-completed">✅ Hoàn thành</span>';
+        } else if (status === 'Đang xử lý' || status === 'PENDING') {
+          statusBadge = '<span class="status-badge status-pending">⏳ Đang xử lý</span>';
+        } else {
+          statusBadge = '<span class="status-badge status-pending">⏳ Đang xử lý</span>';
+        }
+      } else if (record.source === 'pqc') {
+        sourceBadge = '<span style="background:#9b59b6; color:white; padding:2px 6px; border-radius:3px; font-size:10px; margin-left:5px;">PQC</span>';
+        
+        if (record.status === 'OK') {
+          statusBadge = '<span class="status-badge status-completed">✅ PQC PASS</span>';
+        } else if (record.status === 'NG') {
+          statusBadge = '<span class="status-badge status-pending">❌ PQC FAIL</span>';
+        } else {
+          statusBadge = `<span class="status-badge status-pending">${record.status || 'Chưa xác định'}</span>`;
+        }
+      } else if (record.source === 'oqc') {
+        sourceBadge = '<span style="background:#e74c3c; color:white; padding:2px 6px; border-radius:3px; font-size:10px; margin-left:5px;">OQC</span>';
+        
+        if (record.status === 'OK') {
+          statusBadge = '<span class="status-badge status-completed">✅ OQC PASS</span>';
+        } else if (record.status === 'NG') {
+          statusBadge = '<span class="status-badge status-pending">❌ OQC FAIL</span>';
+        } else {
+          statusBadge = `<span class="status-badge status-pending">${record.status || 'Chưa xác định'}</span>`;
         }
       }
       
-      // 2. Tìm trong proData (dữ liệu PRO từ Tab 2)
-      if (proData && proData.length > 0) {
-        proData.forEach((r) => {
-          const qrValue = (
-            r["QR Code"] || 
-            r["QR code"] || 
-            r["Qr code"] ||
-            r.qrCode || 
-            r.qr || 
-            r["QRCode"] || 
-            ""
-          ).toString().trim().toUpperCase();
-          
-          if (qrValue === qrCode.toUpperCase()) {
-            // Hàm chuyển đổi timestamp - FIXED
-            const convertTimestampToTime = (timestamp) => {
-              if (!timestamp) return "";
-              
-              if (typeof timestamp === "number") {
-                try {
-                  const baseDate = new Date('1899-12-30');
-                  const milliseconds = timestamp * 24 * 60 * 60 * 1000;
-                  const resultDate = new Date(baseDate.getTime() + milliseconds);
-                  
-                  const hours = String(resultDate.getHours()).padStart(2, '0');
-                  const minutes = String(resultDate.getMinutes()).padStart(2, '0');
-                  const seconds = String(resultDate.getSeconds()).padStart(2, '0');
-                  
-                  return `${hours}:${minutes}:${seconds}`;
-                } catch (e) {
-                  return timestamp.toString();
-                }
-              }
-              
-              if (typeof timestamp === "string" && timestamp.match(/^\d{1,2}:\d{1,2}:\d{1,2}$/)) {
-                return timestamp;
-              }
-              
-              if (typeof timestamp === "string") {
-                try {
-                  const date = new Date(timestamp);
-                  if (!isNaN(date.getTime())) {
-                    const hours = String(date.getHours()).padStart(2, '0');
-                    const minutes = String(date.getMinutes()).padStart(2, '0');
-                    const seconds = String(date.getSeconds()).padStart(2, '0');
-                    return `${hours}:${minutes}:${seconds}`;
-                  }
-                } catch (e) {
-                  // Ignore
-                }
-              }
-              
-              return timestamp.toString();
-            };
+      historyHTML += `
+        <div class="history-item">
+          <div class="history-header">
+            ${statusBadge}${sourceBadge}
+            <span class="history-date">${record.ngay || 'N/A'} ${record.gio || ''}</span>
+          </div>
+          <div class="history-content">
+            ${record.loi ? `<div class="history-error">🔧 Lỗi: ${record.loi}</div>` : ''}
+            ${record.action ? `<div class="history-action">🛠️ Hành động: ${record.action}</div>` : ''}
+            ${record.ghichu ? `<div class="history-note">📝 Ghi chú: ${record.ghichu}</div>` : ''}
+            <div>👤 ${record.nguoiThucHien || 'N/A'} | 🕒 ${record.ca || 'N/A'} | 📋 ${record.wo || 'N/A'}</div>
+          </div>
+        </div>
+      `;
+    });
+    
+    historyContent.innerHTML = historyHTML;
+    historyContainer.style.display = 'block';
+    
+    console.log("🎉 Đã hiển thị trạng thái cuối cùng từ", Object.keys(latestStatusBySource).length, "nguồn (không bao gồm local)");
+    
+  } else {
+    historyContent.innerHTML = '<div class="no-history">Không tìm thấy lịch sử cho QR code này</div>';
+    historyContainer.style.display = 'block';
+    console.log("❌ Không tìm thấy lịch sử từ 4 nguồn");
+  }
+}
 
-            const convertTimestampToDate = (timestamp) => {
-              if (!timestamp) return "";
-              
-              if (typeof timestamp === "number") {
-                try {
-                  const baseDate = new Date('1899-12-30');
-                  const milliseconds = timestamp * 24 * 60 * 60 * 1000;
-                  const resultDate = new Date(baseDate.getTime() + milliseconds);
-                  
-                  const day = String(resultDate.getDate()).padStart(2, '0');
-                  const month = String(resultDate.getMonth() + 1).padStart(2, '0');
-                  const year = resultDate.getFullYear();
-                  
-                  return `${day}/${month}/${year}`;
-                } catch (e) {
-                  return timestamp.toString();
-                }
-              }
-              
-              if (typeof timestamp === "string" && timestamp.match(/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}$/)) {
-                return timestamp;
-              }
-              
-              if (typeof timestamp === "string") {
-                try {
-                  const date = new Date(timestamp);
-                  if (!isNaN(date.getTime())) {
-                    const day = String(date.getDate()).padStart(2, '0');
-                    const month = String(date.getMonth() + 1).padStart(2, '0');
-                    const year = date.getFullYear();
-                    return `${day}/${month}/${year}`;
-                  }
-                } catch (e) {
-                  // Ignore
-                }
-              }
-              
-              return timestamp.toString();
-            };
-
-            qrHistory.push({
-              source: 'pro',
-              data: r,
-              maHang: r["Mã hàng"] || r.maHang || r["Mã Hàng"] || "",
-              qrCode: qrValue,
-              status: r["Phán định"] || r["Kết quả"] || r.phanDinh || "",
-              loi: r["Mô tả lỗi"] || r.moTaLoi || r["Lỗi"] || "",
-              action: "", // PRO data không có hành động sửa chữa
-              gio: convertTimestampToTime(r["Giờ"] || r.gio || r["Time"]),
-              ngay: convertTimestampToDate(r["Ngày"] || r.ngay || r["Date"]),
-              nguoiThucHien: r["Mã Nhân Viên"] || r.maNV || r.User || r["Nhân viên"] || "",
-              ca: r["Ca làm việc"] || r.caLam || r.Shift || r["Ca"] || "",
-              wo: r["PO"] || r.po || r["WO"] || r["Số WO"] || "",
-              ghichu: r["Ghi chú"] || r.ghichu || r["Note"] || ""
-            });
-          }
-        });
-      }
-
-      // 3. Tìm trong allData (dữ liệu rework từ Tab 3 - Google Sheets)
-      if (allData && allData.length > 0) {
-        allData.forEach((r) => {
-          const qrValue = (
-            r["QR Code"] || 
-            r["Qr code"] || 
-            r["QR code"] || 
-            r.qrCode || 
-            r.qr || 
-            r["QRCode"] || 
-            ""
-          ).toString().trim().toUpperCase();
-          
-          if (qrValue === qrCode.toUpperCase()) {
-            qrHistory.push({
-              source: 'rework_google',
-              data: r,
-              maHang: r["Mã hàng"] || r.maHang || r["Mã Hàng"] || "",
-              qrCode: qrValue,
-              status: r["Trạng thái"] || r.trangThai || r.status || r["Status"] || "",
-              loi: r["Lỗi cần sửa"] || r.loiCanSua || r.moTaLoi || r["Lỗi"] || "",
-              action: r["Hành động sửa chữa"] || r.hanhDongSuaChua || r["Hành động"] || "",
-              gio: r["Giờ"] || r.gio || r["Time"] || "",
-              ngay: r["Ngày"] || r.ngay || r["Date"] || "",
-              nguoiThucHien: r["Người thực hiện"] || r.maNV || r.User || r["Nhân viên"] || "",
-              ca: r["Ca làm việc"] || r.caLam || r.Shift || r["Ca"] || "",
-              wo: r["PO"] || r.po || r["WO"] || r["Số WO"] || "",
-              ghichu: r["Ghi chú"] || r.ghichu || r["Note"] || ""
-            });
-          }
-        });
-      }
-
-      // 4. Tìm trong sauTestData (dữ liệu PQC từ Tab 4)
-      if (sauTestData && sauTestData.length > 0) {
-        sauTestData.forEach((r) => {
-          const qrValue = (
-            r["QR Code"] || 
-            r["QR code"] || 
-            r.qrCode || 
-            r.qr || 
-            ""
-          ).toString().trim().toUpperCase();
-          
-          if (qrValue === qrCode.toUpperCase()) {
-            // Hàm chuyển đổi timestamp - FIXED
-            const convertTimestampToTime = (timestamp) => {
-              if (!timestamp) return "";
-              
-              if (typeof timestamp === "number") {
-                try {
-                  const baseDate = new Date('1899-12-30');
-                  const milliseconds = timestamp * 24 * 60 * 60 * 1000;
-                  const resultDate = new Date(baseDate.getTime() + milliseconds);
-                  
-                  const hours = String(resultDate.getHours()).padStart(2, '0');
-                  const minutes = String(resultDate.getMinutes()).padStart(2, '0');
-                  const seconds = String(resultDate.getSeconds()).padStart(2, '0');
-                  
-                  return `${hours}:${minutes}:${seconds}`;
-                } catch (e) {
-                  return timestamp.toString();
-                }
-              }
-              
-              if (typeof timestamp === "string" && timestamp.match(/^\d{1,2}:\d{1,2}:\d{1,2}$/)) {
-                return timestamp;
-              }
-              
-              if (typeof timestamp === "string") {
-                try {
-                  const date = new Date(timestamp);
-                  if (!isNaN(date.getTime())) {
-                    const hours = String(date.getHours()).padStart(2, '0');
-                    const minutes = String(date.getMinutes()).padStart(2, '0');
-                    const seconds = String(date.getSeconds()).padStart(2, '0');
-                    return `${hours}:${minutes}:${seconds}`;
-                  }
-                } catch (e) {
-                  // Ignore
-                }
-              }
-              
-              return timestamp.toString();
-            };
-
-            const convertTimestampToDate = (timestamp) => {
-              if (!timestamp) return "";
-              
-              if (typeof timestamp === "number") {
-                try {
-                  const baseDate = new Date('1899-12-30');
-                  const milliseconds = timestamp * 24 * 60 * 60 * 1000;
-                  const resultDate = new Date(baseDate.getTime() + milliseconds);
-                  
-                  const day = String(resultDate.getDate()).padStart(2, '0');
-                  const month = String(resultDate.getMonth() + 1).padStart(2, '0');
-                  const year = resultDate.getFullYear();
-                  
-                  return `${day}/${month}/${year}`;
-                } catch (e) {
-                  return timestamp.toString();
-                }
-              }
-              
-              if (typeof timestamp === "string" && timestamp.match(/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}$/)) {
-                return timestamp;
-              }
-              
-              if (typeof timestamp === "string") {
-                try {
-                  const date = new Date(timestamp);
-                  if (!isNaN(date.getTime())) {
-                    const day = String(date.getDate()).padStart(2, '0');
-                    const month = String(date.getMonth() + 1).padStart(2, '0');
-                    const year = date.getFullYear();
-                    return `${day}/${month}/${year}`;
-                  }
-                } catch (e) {
-                  // Ignore
-                }
-              }
-              
-              return timestamp.toString();
-            };
-
-            qrHistory.push({
-              source: 'pqc',
-              data: r,
-              maHang: r["Mã hàng"] || r.maHang || "",
-              qrCode: qrValue,
-              status: r["Phán định"] || r.phanDinh || "",
-              loi: r["Mô tả lỗi"] || r.moTaLoi || "",
-              action: "", // PQC data không có hành động sửa chữa
-              gio: convertTimestampToTime(r["Giờ"] || r.gio || ""),
-              ngay: convertTimestampToDate(r["Ngày"] || r.ngay || ""),
-              nguoiThucHien: r["Mã Nhân Viên"] || r.maNV || "",
-              ca: r["Ca làm việc"] || r.caLam || "",
-              wo: r["PO"] || r.po || "",
-              ghichu: r["Ghi chú"] || r.ghichu || ""
-            });
-          }
-        });
-      }
-
-      // 5. Tìm trong oqcData (dữ liệu OQC từ Tab 5)
-      if (oqcData && oqcData.length > 0) {
-        oqcData.forEach((r) => {
-          const qrValue = (
-            r["QR Code"] || 
-            r["QR code"] || 
-            r.qrCode || 
-            r.qr || 
-            ""
-          ).toString().trim().toUpperCase();
-          
-          if (qrValue === qrCode.toUpperCase()) {
-            // Hàm chuyển đổi timestamp - FIXED
-            const convertTimestampToTime = (timestamp) => {
-              if (!timestamp) return "";
-              
-              if (typeof timestamp === "number") {
-                try {
-                  const baseDate = new Date('1899-12-30');
-                  const milliseconds = timestamp * 24 * 60 * 60 * 1000;
-                  const resultDate = new Date(baseDate.getTime() + milliseconds);
-                  
-                  const hours = String(resultDate.getHours()).padStart(2, '0');
-                  const minutes = String(resultDate.getMinutes()).padStart(2, '0');
-                  const seconds = String(resultDate.getSeconds()).padStart(2, '0');
-                  
-                  return `${hours}:${minutes}:${seconds}`;
-                } catch (e) {
-                  return timestamp.toString();
-                }
-              }
-              
-              if (typeof timestamp === "string" && timestamp.match(/^\d{1,2}:\d{1,2}:\d{1,2}$/)) {
-                return timestamp;
-              }
-              
-              if (typeof timestamp === "string") {
-                try {
-                  const date = new Date(timestamp);
-                  if (!isNaN(date.getTime())) {
-                    const hours = String(date.getHours()).padStart(2, '0');
-                    const minutes = String(date.getMinutes()).padStart(2, '0');
-                    const seconds = String(date.getSeconds()).padStart(2, '0');
-                    return `${hours}:${minutes}:${seconds}`;
-                  }
-                } catch (e) {
-                  // Ignore
-                }
-              }
-              
-              return timestamp.toString();
-            };
-
-            const convertTimestampToDate = (timestamp) => {
-              if (!timestamp) return "";
-              
-              if (typeof timestamp === "number") {
-                try {
-                  const baseDate = new Date('1899-12-30');
-                  const milliseconds = timestamp * 24 * 60 * 60 * 1000;
-                  const resultDate = new Date(baseDate.getTime() + milliseconds);
-                  
-                  const day = String(resultDate.getDate()).padStart(2, '0');
-                  const month = String(resultDate.getMonth() + 1).padStart(2, '0');
-                  const year = resultDate.getFullYear();
-                  
-                  return `${day}/${month}/${year}`;
-                } catch (e) {
-                  return timestamp.toString();
-                }
-              }
-              
-              if (typeof timestamp === "string" && timestamp.match(/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}$/)) {
-                return timestamp;
-              }
-              
-              if (typeof timestamp === "string") {
-                try {
-                  const date = new Date(timestamp);
-                  if (!isNaN(date.getTime())) {
-                    const day = String(date.getDate()).padStart(2, '0');
-                    const month = String(date.getMonth() + 1).padStart(2, '0');
-                    const year = date.getFullYear();
-                    return `${day}/${month}/${year}`;
-                  }
-                } catch (e) {
-                  // Ignore
-                }
-              }
-              
-              return timestamp.toString();
-            };
-
-            qrHistory.push({
-              source: 'oqc',
-              data: r,
-              maHang: r["Mã hàng"] || r.maHang || "",
-              qrCode: qrValue,
-              status: r["Phán định"] || r.phanDinh || "",
-              loi: r["Mô tả lỗi"] || r.moTaLoi || "",
-              action: "", // OQC data không có hành động sửa chữa
-              gio: convertTimestampToTime(r["Giờ"] || r.gio || ""),
-              ngay: convertTimestampToDate(r["Ngày"] || r.ngay || ""),
-              nguoiThucHien: r["Mã Nhân Viên"] || r.maNV || "",
-              ca: r["Ca làm việc"] || r.caLam || "",
-              wo: r["PO"] || r.po || "",
-              ghichu: r["Ghi chú"] || r.ghichu || ""
-            });
-          }
-        });
-      }
-      
-      console.log("📋 Tổng cộng tìm thấy:", qrHistory.length, "bản ghi từ 5 nguồn");
-      
-      if (qrHistory.length > 0) {
-        currentQRCodeSpan.textContent = qrCode;
-        
-        // Sắp xếp theo thời gian mới nhất trước
-        qrHistory.sort((a, b) => {
-          const createDate = (item) => {
-            if (item.ngay && item.gio) {
-              try {
-                const [day, month, year] = item.ngay.split('/');
-                const [hour, minute, second] = item.gio.split(':');
-                return new Date(year, month - 1, day, hour, minute, second || 0);
-              } catch (e) {
-                return new Date(0);
-              }
-            } else if (item.ngay) {
-              try {
-                const [day, month, year] = item.ngay.split('/');
-                return new Date(year, month - 1, day);
-              } catch (e) {
-                return new Date(0);
-              }
-            } else {
-              return new Date(0);
-            }
-          };
-          
-          const dateA = createDate(a);
-          const dateB = createDate(b);
-          return dateB - dateA;
-        });
-        
-        let historyHTML = '';
-        qrHistory.forEach((record, index) => {
-          // Xác định badge cho nguồn dữ liệu
-          let sourceBadge = '';
-          let statusBadge = '';
-          
-          if (record.source === 'pro') {
-            sourceBadge = '<span style="background:#3498db; color:white; padding:2px 6px; border-radius:3px; font-size:10px; margin-left:5px;">PRO TEST</span>';
-            
-            if (record.status === 'OK') {
-              statusBadge = '<span class="status-badge status-completed">✅ PASS TEST</span>';
-            } else if (record.status === 'NG') {
-              statusBadge = '<span class="status-badge status-pending">❌ FAIL TEST</span>';
-            } else {
-              statusBadge = `<span class="status-badge status-pending">${record.status || 'Chưa xác định'}</span>`;
-            }
-          } else if (record.source === 'rework_google') {
-            sourceBadge = '<span style="background:#e67e22; color:white; padding:2px 6px; border-radius:3px; font-size:10px; margin-left:5px;">REWORK (GOOGLE)</span>';
-            
-            statusBadge = record.status === 'COMPLETED' ? 
-              '<span class="status-badge status-completed">✅ Hoàn thành</span>' : 
-              '<span class="status-badge status-pending">⏳ Đang xử lý</span>';
-          } else if (record.source === 'rework_local') {
-            sourceBadge = '<span style="background:#27ae60; color:white; padding:2px 6px; border-radius:3px; font-size:10px; margin-left:5px;">REWORK (LOCAL)</span>';
-            
-            statusBadge = record.status === 'COMPLETED' ? 
-              '<span class="status-badge status-completed">✅ Hoàn thành</span>' : 
-              '<span class="status-badge status-pending">⏳ Đang xử lý</span>';
-          } else if (record.source === 'pqc') {
-            sourceBadge = '<span style="background:#9b59b6; color:white; padding:2px 6px; border-radius:3px; font-size:10px; margin-left:5px;">PQC</span>';
-            
-            if (record.status === 'OK') {
-              statusBadge = '<span class="status-badge status-completed">✅ PQC PASS</span>';
-            } else if (record.status === 'NG') {
-              statusBadge = '<span class="status-badge status-pending">❌ PQC FAIL</span>';
-            } else {
-              statusBadge = `<span class="status-badge status-pending">${record.status || 'Chưa xác định'}</span>`;
-            }
-          } else if (record.source === 'oqc') {
-            sourceBadge = '<span style="background:#e74c3c; color:white; padding:2px 6px; border-radius:3px; font-size:10px; margin-left:5px;">OQC</span>';
-            
-            if (record.status === 'OK') {
-              statusBadge = '<span class="status-badge status-completed">✅ OQC PASS</span>';
-            } else if (record.status === 'NG') {
-              statusBadge = '<span class="status-badge status-pending">❌ OQC FAIL</span>';
-            } else {
-              statusBadge = `<span class="status-badge status-pending">${record.status || 'Chưa xác định'}</span>`;
-            }
-          }
-          
-          historyHTML += `
-            <div class="history-item">
-              <div class="history-header">
-                ${statusBadge}${sourceBadge}
-                <span class="history-date">${record.ngay || 'N/A'} ${record.gio || ''}</span>
-              </div>
-              <div class="history-content">
-                ${record.loi ? `<div class="history-error">🔧 Lỗi: ${record.loi}</div>` : ''}
-                ${record.action ? `<div class="history-action">🛠️ Hành động: ${record.action}</div>` : ''}
-                ${record.ghichu ? `<div class="history-note">📝 Ghi chú: ${record.ghichu}</div>` : ''}
-                <div>👤 ${record.nguoiThucHien || 'N/A'} | 🕒 ${record.ca || 'N/A'} | 📋 ${record.wo || 'N/A'}</div>
-              </div>
-            </div>
-          `;
-        });
-        
-        historyContent.innerHTML = historyHTML;
-        historyContainer.style.display = 'block';
-        
-        console.log("🎉 Đã hiển thị lịch sử từ 5 nguồn: PRO, Rework Google, Rework Local, PQC, OQC");
-        
-      } else {
-        historyContent.innerHTML = '<div class="no-history">Không tìm thấy lịch sử cho QR code này</div>';
-        historyContainer.style.display = 'block';
-        console.log("❌ Không tìm thấy lịch sử từ 5 nguồn");
-      }
-    }
-
-    function hideQRHistory() {
-      document.getElementById('qrHistory').style.display = 'none';
-    }
-
+function hideQRHistory() {
+  document.getElementById('qrHistory').style.display = 'none';
+}
     /* ===== Utility ===== */
     function recomputeCountsForShift(shift) {
       let completed = 0, pending = 0;
@@ -2036,27 +1920,27 @@
     }
 
     function reloadFromGoogle(){
-      return new Promise((resolve, reject) => {
-        fetch(REWORK_SHEET_URL)
-          .then(res=>{
-            if (!res.ok) {
-              throw new Error(`HTTP error! status: ${res.status}`);
-            }
-            return res.json();
-          })
-          .then(data=>{
-            allData = data || [];
-            populateFilters(allData);
-            renderReportTable(allData);
-            resolve(allData);
-          })
-          .catch(err=>{
-            console.error("Không lấy được dữ liệu:", err);
-            alert("❌ Không lấy được dữ liệu: " + err.message);
-            reject(err);
-          });
+  return new Promise((resolve, reject) => {
+    fetch(REWORK_SHEET_URL)
+      .then(res=>{
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        return res.json();
+      })
+      .then(data=>{
+        allData = data || [];
+        populateFilters(allData);
+        renderReportTable(allData);
+        resolve(allData); // ← THÊM DÒNG NÀY
+      })
+      .catch(err=>{
+        console.error("Không lấy được dữ liệu:", err);
+        alert("❌ Không lấy được dữ liệu: " + err.message);
+        reject(err); // ← THÊM DÒNG NÀY
       });
-    }
+  });
+}
 
     function applyFilters() {
       window.preventAutoReload = true;
@@ -2160,27 +2044,51 @@
   if (info) info.textContent = `Tổng: ${data.length} dòng rework`;
 }
     // Khởi tạo khi trang được tải
-    window.onload = function() {
-      recomputeCountsForShift(currentShift || "");
+    // Khởi tạo khi trang được tải
+window.onload = function() {
+  recomputeCountsForShift(currentShift || "");
+  renderTable();
+  updateChart();
+
+  // TỰ ĐỘNG LOAD TẤT CẢ DỮ LIỆU KHI MỞ APP
+  console.log("🚀 Tự động load tất cả dữ liệu khi khởi động app...");
+  
+  // Load dữ liệu Tab 3 (Rework)
+  reloadFromGoogle().then(() => {
+    console.log("✅ Đã load xong dữ liệu Rework (Tab 3)");
+  }).catch(err => {
+    console.error("❌ Lỗi load Rework data:", err);
+  });
+  
+  // Load dữ liệu Tab 2 (PRO)
+  loadReferenceData(true);
+  console.log("✅ Đã load dữ liệu PRO (Tab 2)");
+  
+  // Load dữ liệu Tab 4 (PQC)
+  loadSauTestData(true);
+  console.log("✅ Đã load dữ liệu PQC (Tab 4)");
+  
+  // Load dữ liệu Tab 5 (OQC)
+  loadOQCData(true);
+  console.log("✅ Đã load dữ liệu OQC (Tab 5)");
+
+  // Tự động cập nhật dữ liệu mỗi 1 phút (dù ở tab nào)
+  setInterval(function() {
+    console.log("🔄 Tự động cập nhật dữ liệu...");
+    reloadFromGoogle();
+    loadReferenceData(true);
+    loadSauTestData(true);
+    loadOQCData(true);
+  }, 60000); // 60000ms = 1 phút
+
+  window.addEventListener("storage", (event) => {
+    if (event.key === "records") {
+      records = JSON.parse(event.newValue || "[]");
       renderTable();
-      updateChart();
-
-      // Tự động cập nhật dữ liệu mỗi 1 phút (dù ở tab nào)
-      setInterval(function() {
-        reloadFromGoogle();
-        loadReferenceData(true); // Cập nhật dữ liệu PRO
-        loadSauTestData(true); // Cập nhật dữ liệu PQC
-        loadOQCData(true); // Cập nhật dữ liệu OQC
-      }, 60000); // 60000ms = 1 phút
-
-      window.addEventListener("storage", (event) => {
-        if (event.key === "records") {
-          records = JSON.parse(event.newValue || "[]");
-          renderTable();
-          recomputeCountsForShift(currentShift || "");
-        }
-      });
+      recomputeCountsForShift(currentShift || "");
     }
+  });
+}
 
     // AUTO UPPERCASE CHO TẤT CẢ INPUT & TEXTAREA
     document.querySelectorAll("input[type='text'], textarea").forEach(el => {
